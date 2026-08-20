@@ -32,7 +32,11 @@ const reportStuck = (step: string) => {
     params: [...new URLSearchParams(location.search).keys()],
     ua: navigator.userAgent,
   };
-  fetch(`${apiBase}/api/debug`, { method: "POST", body: JSON.stringify(payload) }).catch(() => {});
+  fetch(`${apiBase}/api/debug`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  }).catch(() => {});
 };
 
 export type ActivitySession = {

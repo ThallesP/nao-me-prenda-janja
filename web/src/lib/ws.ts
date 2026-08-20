@@ -5,6 +5,8 @@ export type RoomHandlers = {
   onMessage: (msg: ServerMsg) => void;
   /** Fired when the server rejects the token — no reconnect after this. */
   onAuthFailed: () => void;
+  /** Fired when a bounded server connection limit rejects this socket. */
+  onRejected: (reason: string) => void;
 };
 
 export type RoomConnection = {
@@ -33,6 +35,11 @@ export const connectRoom = (token: string, handlers: RoomHandlers): RoomConnecti
       if (msg.type === "auth_failed") {
         disposed = true;
         handlers.onAuthFailed();
+        return;
+      }
+      if (msg.type === "connection_rejected") {
+        disposed = true;
+        handlers.onRejected(msg.reason);
         return;
       }
       if (msg.type === "hello") attempts = 0;

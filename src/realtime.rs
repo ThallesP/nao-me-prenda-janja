@@ -145,6 +145,106 @@ async fn tracks_new(
     Ok(parsed)
 }
 
+/// Close pulled tracks so the SFU stops sending them. The browser stops the
+/// transceivers and offers; Cloudflare answers with those m-lines rejected.
+pub async fn close_tracks(
+    state: &AppState,
+    session_id: &str,
+    mids: &[String],
+    offer_sdp: &str,
+) -> Result<String> {
+    let tracks: Vec<serde_json::Value> = mids.iter().map(|mid| json!({ "mid": mid })).collect();
+    let resp = state
+        .http
+        .put(format!("{}/sessions/{session_id}/tracks/close", base_url(state)))
+        .bearer_auth(&state.cfg.cloudflare().app_secret)
+        .json(&json!({
+            "tracks": tracks,
+            "sessionDescription": { "type": "offer", "sdp": offer_sdp },
+            "force": false,
+        }))
+        .send()
+        .await
+        .context("cloudflare tracks/close request")?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        bail!("cloudflare tracks/close failed ({status}): {body}");
+    }
+    let parsed: TracksResponse = resp.json().await.context("tracks/close parse")?;
+    if let Some(code) = &parsed.error_code {
+        bail!(
+            "cloudflare tracks/close error: {code} {}",
+            parsed.error_description.as_deref().unwrap_or("")
+        );
+    }
+    // A per-track failure means the SFU may still be forwarding that mid;
+    // reporting success would desync the browser's mid bookkeeping.
+    for track in &parsed.tracks {
+        if let Some(code) = &track.error_code {
+            bail!(
+                "cloudflare tracks/close track error: {code} {}",
+                track.error_description.as_deref().unwrap_or("")
+            );
+        }
+    }
+    parsed
+        .session_description
+        .map(|d| d.sdp)
+        .ok_or_else(|| anyhow::anyhow!("cloudflare tracks/close returned no answer"))
+}
+
+/// Immediately stop media on every supplied mid without requiring a browser
+/// offer/answer round. This is the server-side revocation path used when a
+/// websocket lease, share, or signed session expires.
+pub async fn force_close_tracks(
+    state: &AppState,
+    session_id: &str,
+    mids: &[String],
+) -> Result<()> {
+    for chunk in mids.chunks(64) {
+        force_close_track_chunk(state, session_id, chunk).await?;
+    }
+    Ok(())
+}
+
+async fn force_close_track_chunk(
+    state: &AppState,
+    session_id: &str,
+    mids: &[String],
+) -> Result<()> {
+    let tracks: Vec<serde_json::Value> = mids.iter().map(|mid| json!({ "mid": mid })).collect();
+    let resp = state
+        .http
+        .put(format!("{}/sessions/{session_id}/tracks/close", base_url(state)))
+        .bearer_auth(&state.cfg.cloudflare().app_secret)
+        .json(&json!({ "tracks": tracks, "force": true }))
+        .send()
+        .await
+        .context("cloudflare forced tracks/close request")?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        bail!("cloudflare forced tracks/close failed ({status}): {body}");
+    }
+    let parsed: TracksResponse = resp.json().await.context("forced tracks/close parse")?;
+    if let Some(code) = &parsed.error_code {
+        bail!(
+            "cloudflare forced tracks/close error: {code} {}",
+            parsed.error_description.as_deref().unwrap_or("")
+        );
+    }
+    for track in &parsed.tracks {
+        if let Some(code) = &track.error_code {
+            bail!(
+                "cloudflare forced tracks/close track error: {code} {}",
+                track.error_description.as_deref().unwrap_or("")
+            );
+        }
+    }
+    Ok(())
+}
+
 pub async fn renegotiate(state: &AppState, session_id: &str, answer_sdp: &str) -> Result<()> {
     let resp = state
         .http

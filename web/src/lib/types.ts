@@ -17,7 +17,9 @@ export type ServerMsg =
   | { type: "hello"; conn_id: number; shares: Share[] }
   | { type: "share_started"; share: Share }
   | { type: "share_ended"; share_id: string }
-  | { type: "auth_failed" };
+  | { type: "viewer_count"; share_id: string; video: number; audio: number; total: number }
+  | { type: "auth_failed" }
+  | { type: "connection_rejected"; reason: string };
 
 export const avatarUrl = (userId: string, avatar: string | null, size = 128) => {
   if (avatar) {

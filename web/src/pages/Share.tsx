@@ -44,6 +44,13 @@ const FRAME_RATES = [
 ];
 
 /**
+ * How long the audience must stay at zero before the encoder is paused.
+ * Covers the just-went-live window (viewers announce intent, then pull) and
+ * keeps quick alt-tabs from flapping the encoder.
+ */
+const PAUSE_AFTER_MS = 4000;
+
+/**
  * Build capture constraints for a preset. Note constraints never filter the
  * picker — they only scale the result. Monitor capture delivers physical
  * pixels (tabs capture at CSS pixels).
@@ -76,17 +83,64 @@ export const Share = () => {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [resolutionId, setResolutionId] = useState("source");
   const [fpsId, setFpsId] = useState("60");
+  const [watchers, setWatchers] = useState(0);
+  const [videoPaused, setVideoPaused] = useState(false);
   const connIdRef = useRef<number | null>(null);
   const connRef = useRef<RoomConnection | null>(null);
   const publisherRef = useRef<Publisher | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const startingRef = useRef(false);
   const previewRef = useRef<HTMLVideoElement>(null);
+  /** Latest viewer counts per share id — may arrive before we're live. */
+  const countsRef = useRef<Map<string, { video: number; audio: number; total: number }>>(
+    new Map(),
+  );
+  const pauseTimersRef = useRef<{
+    video?: ReturnType<typeof setTimeout>;
+    audio?: ReturnType<typeof setTimeout>;
+  }>({});
+
+  /**
+   * Discord-style idle pause: when nobody subscribes to a track, disable it so
+   * the encoder (and the upload) goes idle; re-enable the instant someone
+   * watches. Zero-audience is debounced, resume is immediate.
+   */
+  const applyAudience = () => {
+    const publisher = publisherRef.current;
+    const stream = streamRef.current;
+    if (!publisher || !stream) return;
+    const counts = countsRef.current.get(publisher.shareId) ?? { video: 0, audio: 0, total: 0 };
+    setWatchers(counts.total);
+    const timers = pauseTimersRef.current;
+    const apply = (kind: "video" | "audio", track: MediaStreamTrack | undefined) => {
+      if (!track) return;
+      if (counts[kind] > 0) {
+        clearTimeout(timers[kind]);
+        timers[kind] = undefined;
+        track.enabled = true;
+        if (kind === "video") setVideoPaused(false);
+      } else if (track.enabled && !timers[kind]) {
+        timers[kind] = setTimeout(() => {
+          timers[kind] = undefined;
+          track.enabled = false;
+          if (kind === "video") setVideoPaused(true);
+        }, PAUSE_AFTER_MS);
+      }
+    };
+    apply("video", stream.getVideoTracks()[0]);
+    apply("audio", stream.getAudioTracks()[0]);
+  };
 
   const endLocal = () => {
     publisherRef.current?.close();
     publisherRef.current = null;
+    streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    clearTimeout(pauseTimersRef.current.video);
+    clearTimeout(pauseTimersRef.current.audio);
+    pauseTimersRef.current = {};
+    setWatchers(0);
+    setVideoPaused(false);
     setPhase((prev) => (prev.kind === "live" ? { kind: "ended" } : prev));
   };
 
@@ -126,9 +180,28 @@ export const Share = () => {
             if (msg.type === "share_ended" && msg.share_id === publisherRef.current?.shareId) {
               endLocal();
             }
+            if (msg.type === "viewer_count") {
+              countsRef.current.set(msg.share_id, {
+                video: msg.video,
+                audio: msg.audio,
+                total: msg.total,
+              });
+              applyAudience();
+            }
           },
-          onAuthFailed: () =>
-            setPhase({ kind: "invalid", message: "You're no longer in the activity's voice channel." }),
+          onAuthFailed: () => {
+            connIdRef.current = null;
+            endLocal();
+            setPhase({
+              kind: "invalid",
+              message: "You're no longer in the activity's voice channel.",
+            });
+          },
+          onRejected: (reason) => {
+            connIdRef.current = null;
+            endLocal();
+            setPhase({ kind: "error", message: reason });
+          },
         });
       })
       .catch(() => {
@@ -140,12 +213,17 @@ export const Share = () => {
         }
       });
 
-    const onPageHide = () => publisherRef.current?.close();
+    const onPageHide = () => {
+      publisherRef.current?.close();
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
     window.addEventListener("pagehide", onPageHide);
     return () => {
       cancelled = true;
+      connIdRef.current = null;
       connRef.current?.dispose();
       publisherRef.current?.close();
+      streamRef.current?.getTracks().forEach((track) => track.stop());
       window.removeEventListener("pagehide", onPageHide);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -174,8 +252,15 @@ export const Share = () => {
         // Browser's own "Stop sharing" bar ends the track — mirror it.
         videoTrack.addEventListener("ended", () => stopStreaming());
         return publishScreen(stream, connId, res.bitrate).then((publisher) => {
+          if (connIdRef.current !== connId) {
+            publisher.close();
+            return;
+          }
           publisherRef.current = publisher;
           setPhase({ kind: "live" });
+          // Viewer counts may have landed while signaling was in flight; and
+          // with no audience yet, this arms the idle-pause timer.
+          applyAudience();
           // Capture may have been stopped while signaling was in flight.
           if (videoTrack.readyState === "ended") stopStreaming();
         });
@@ -276,8 +361,17 @@ export const Share = () => {
         {phase.kind === "live" && (
           <>
             <div className="share-live-row">
-              <span className="live-badge">Live</span>
-              <span className="share-title">You're streaming</span>
+              <span className="live-badge">{videoPaused ? "Paused" : "Live"}</span>
+              <span className="share-title">
+                {!videoPaused
+                  ? "You're streaming"
+                  : watchers > 0
+                    ? "Video paused — audience is listening only"
+                    : "Paused — no one is watching"}
+              </span>
+              <span className="share-watchers">
+                {watchers === 1 ? "1 viewer" : `${watchers} viewers`}
+              </span>
             </div>
             <video ref={previewRef} className="share-preview" muted playsInline />
             <button type="button" className="btn-danger btn-large" onClick={stopStreaming}>

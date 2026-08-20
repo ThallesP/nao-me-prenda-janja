@@ -615,6 +615,13 @@ button {
   gap: 8px;
 }
 
+.share-watchers {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .share-preview {
   width: 100%;
   aspect-ratio: 16 / 9;

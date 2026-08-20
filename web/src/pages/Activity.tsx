@@ -6,7 +6,7 @@ import { StreamTile } from "../components/StreamTile";
 import { useBestFit } from "../components/useBestFit";
 import { createShareLink, getSessionToken } from "../lib/api";
 import { setupDiscord } from "../lib/discord";
-import { Viewer } from "../lib/rtc";
+import { Viewer, type StreamKind } from "../lib/rtc";
 import type { PublicUser, Share, ServerMsg } from "../lib/types";
 import { connectRoom, type RoomConnection } from "../lib/ws";
 
@@ -23,6 +23,7 @@ export const Activity = () => {
   const [streams, setStreams] = useState<Map<string, StreamPair>>(new Map());
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [mutedIds, setMutedIds] = useState<Set<string>>(new Set());
+  const [unwatchedIds, setUnwatchedIds] = useState<Set<string>>(new Set());
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [audioRetry, setAudioRetry] = useState(0);
   const [barVisible, setBarVisible] = useState(true);
@@ -31,8 +32,20 @@ export const Activity = () => {
 
   const sdkRef = useRef<DiscordSDK | null>(null);
   const viewerRef = useRef<Viewer | null>(null);
-  const watchedRef = useRef<Set<string>>(new Set());
+  const connIdRef = useRef<number | null>(null);
+  const connRef = useRef<RoomConnection | null>(null);
   const sharesRef = useRef<Map<string, Share>>(new Map());
+  /**
+   * Per share: which kinds are currently subscribed at the SFU, plus a
+   * per-kind sequence bumped on every new pull so a stale pull's failure
+   * callback can't clobber the state of a newer attempt.
+   */
+  const appliedRef = useRef<
+    Map<string, { video: boolean; audio: boolean; seq: { video: number; audio: number } }>
+  >(new Map());
+  const unwatchedRef = useRef<Set<string>>(new Set());
+  const mutedRef = useRef<Set<string>>(new Set());
+  const hiddenRef = useRef(document.hidden);
   const idleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const onTrack = useCallback(
@@ -47,71 +60,136 @@ export const Activity = () => {
   );
 
   /**
-   * Watch a share, un-marking it and retrying while it still exists if the
-   * pull fails — otherwise one transient SFU hiccup would leave the tile
-   * stuck on "Connecting…" forever.
+   * Tell the server which streams this peer is subscribed to (sent on intent,
+   * before pulls land) — it aggregates the counts so publishers can pause
+   * encoders nobody is receiving.
    */
-  const watchShare = useCallback((id: string) => {
-    const viewer = viewerRef.current;
-    if (!viewer || watchedRef.current.has(id)) return;
-    watchedRef.current.add(id);
-    viewer.watch(id).then((ok) => {
-      if (ok || viewerRef.current !== viewer) return;
-      watchedRef.current.delete(id);
-      setTimeout(() => {
-        if (viewerRef.current === viewer && sharesRef.current.has(id)) {
-          watchShare(id);
-        }
-      }, 3000);
+  const sendWatching = useCallback(() => {
+    const video: string[] = [];
+    const audio: string[] = [];
+    for (const share of sharesRef.current.values()) {
+      if (unwatchedRef.current.has(share.id)) continue;
+      // Hidden activity drops video but keeps listening, Discord-style.
+      if (!hiddenRef.current) video.push(share.id);
+      if (share.has_audio && !mutedRef.current.has(share.id)) audio.push(share.id);
+    }
+    connRef.current?.send({ type: "watching", video, audio });
+  }, []);
+
+  const dropStreams = useCallback((id: string, kinds: StreamKind[]) => {
+    setStreams((prev) => {
+      const pair = prev.get(id);
+      if (!pair) return prev;
+      const next = new Map(prev);
+      const rest = { ...pair };
+      for (const kind of kinds) delete rest[kind];
+      if (rest.video || rest.audio) next.set(id, rest);
+      else next.delete(id);
+      return next;
     });
   }, []);
 
+  /**
+   * Diff desired subscriptions (share exists, tile watched, tab visible,
+   * audio unmuted) against what's actually pulled, then pull/unpull the
+   * difference. Failed pulls retry while the share still exists — otherwise
+   * one transient SFU hiccup would leave a tile stuck on "Connecting…".
+   */
+  const reconcile = useCallback(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    const applied = appliedRef.current;
+    for (const id of [...applied.keys()]) {
+      if (!sharesRef.current.has(id)) applied.delete(id);
+    }
+    sendWatching();
+    for (const share of sharesRef.current.values()) {
+      const state = applied.get(share.id) ?? {
+        video: false,
+        audio: false,
+        seq: { video: 0, audio: 0 },
+      };
+      applied.set(share.id, state);
+      const unwatched = unwatchedRef.current.has(share.id);
+      const want = {
+        video: !unwatched && !hiddenRef.current,
+        audio: share.has_audio && !unwatched && !mutedRef.current.has(share.id),
+      };
+      const add = (["video", "audio"] as const).filter((k) => want[k] && !state[k]);
+      const remove = (["video", "audio"] as const).filter((k) => !want[k] && state[k]);
+      for (const kind of add) {
+        state[kind] = true;
+        state.seq[kind] += 1;
+      }
+      for (const kind of remove) state[kind] = false;
+      if (add.length > 0) {
+        const seqs = add.map((kind) => state.seq[kind]);
+        viewer.watch(share.id, add).then((ok) => {
+          if (ok || viewerRef.current !== viewer) return;
+          const current = appliedRef.current.get(share.id);
+          if (current) {
+            // Only roll back kinds no newer pull has touched since.
+            add.forEach((kind, i) => {
+              if (current.seq[kind] === seqs[i]) current[kind] = false;
+            });
+          }
+          setTimeout(() => {
+            if (viewerRef.current === viewer && sharesRef.current.has(share.id)) reconcile();
+          }, 3000);
+        });
+      }
+      if (remove.length > 0) {
+        dropStreams(share.id, remove);
+        viewer.unwatch(share.id, remove);
+      }
+    }
+  }, [sendWatching, dropStreams]);
+
   const rebuildViewer = useCallback(() => {
     viewerRef.current?.close();
-    watchedRef.current = new Set();
-    viewerRef.current = new Viewer(onTrack, () => rebuildViewer());
+    appliedRef.current = new Map();
     setStreams(new Map());
-    for (const id of sharesRef.current.keys()) {
-      watchShare(id);
-    }
-  }, [onTrack, watchShare]);
+    const connId = connIdRef.current;
+    if (connId === null) return;
+    viewerRef.current = new Viewer(connId, onTrack, () => rebuildViewer());
+    reconcile();
+  }, [onTrack, reconcile]);
 
   const applyShares = useCallback(
     (next: Map<string, Share>) => {
       sharesRef.current = next;
       setShares(next);
-      for (const id of next.keys()) {
-        watchShare(id);
-      }
+      reconcile();
       setStreams((prev) => {
         const filtered = new Map([...prev].filter(([id]) => next.has(id)));
         return filtered.size === prev.size ? prev : filtered;
       });
       setFocusedId((prev) => (prev && next.has(prev) ? prev : null));
     },
-    [watchShare],
+    [reconcile],
   );
 
   const onMessage = useCallback(
     (msg: ServerMsg) => {
       if (msg.type === "hello") {
+        if (connIdRef.current !== msg.conn_id) {
+          connIdRef.current = msg.conn_id;
+          rebuildViewer();
+        }
         applyShares(new Map(msg.shares.map((s) => [s.id, s])));
       } else if (msg.type === "share_started") {
         applyShares(new Map(sharesRef.current).set(msg.share.id, msg.share));
       } else if (msg.type === "share_ended") {
         const next = new Map(sharesRef.current);
         next.delete(msg.share_id);
-        watchedRef.current.delete(msg.share_id);
         applyShares(next);
       }
     },
-    [applyShares],
+    [applyShares, rebuildViewer],
   );
 
   useEffect(() => {
-    let conn: RoomConnection | undefined;
     let cancelled = false;
-    viewerRef.current = new Viewer(onTrack, () => rebuildViewer());
 
     setupDiscord(setLoadStep)
       .then(({ sdk, user }) => {
@@ -120,10 +198,18 @@ export const Activity = () => {
         setSelf(user);
         const token = getSessionToken();
         if (!token) throw new Error("missing session token");
-        conn = connectRoom(token, {
+        connRef.current = connectRoom(token, {
           onMessage,
-          onAuthFailed: () =>
-            setPhase({ kind: "error", message: "You're no longer in this activity." }),
+          onAuthFailed: () => {
+            connIdRef.current = null;
+            viewerRef.current?.close();
+            setPhase({ kind: "error", message: "You're no longer in this activity." });
+          },
+          onRejected: (reason) => {
+            connIdRef.current = null;
+            viewerRef.current?.close();
+            setPhase({ kind: "error", message: reason });
+          },
         });
         setPhase({ kind: "ready" });
       })
@@ -136,11 +222,24 @@ export const Activity = () => {
 
     return () => {
       cancelled = true;
-      conn?.dispose();
+      connIdRef.current = null;
+      connRef.current?.dispose();
       viewerRef.current?.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Discord pauses hidden streams to save CPU and bandwidth — same here: a
+  // hidden activity drops its video subscriptions (audio keeps playing) and
+  // re-pulls them when it becomes visible again.
+  useEffect(() => {
+    const onVisibility = () => {
+      hiddenRef.current = document.hidden;
+      reconcile();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [reconcile]);
 
   // Discord-style auto-hiding control bar.
   useEffect(() => {
@@ -165,13 +264,25 @@ export const Activity = () => {
       .catch((err: unknown) => console.error("share link failed", err));
   };
 
+  // Mute unpulls the audio track (not just element-level mute) so a muted
+  // stream costs no audio bandwidth; unmute re-pulls it.
   const toggleMute = (id: string) => {
-    setMutedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    const next = new Set(mutedRef.current);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    mutedRef.current = next;
+    setMutedIds(next);
+    reconcile();
+  };
+
+  // Per-stream opt-out: an unwatched tile receives nothing at all.
+  const toggleWatch = (id: string) => {
+    const next = new Set(unwatchedRef.current);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    unwatchedRef.current = next;
+    setUnwatchedIds(next);
+    reconcile();
   };
 
   const unlockAudio = () => {
@@ -194,11 +305,13 @@ export const Activity = () => {
       video={streams.get(share.id)?.video}
       audio={streams.get(share.id)?.audio}
       muted={mutedIds.has(share.id)}
+      watching={!unwatchedIds.has(share.id)}
       audioRetry={audioRetry}
       compact={compact}
       style={style}
       onClick={() => setFocusedId(focusedId === share.id ? null : share.id)}
       onToggleMute={() => toggleMute(share.id)}
+      onToggleWatch={() => toggleWatch(share.id)}
       onAudioBlocked={onAudioBlocked}
     />
   );

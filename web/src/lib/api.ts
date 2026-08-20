@@ -47,8 +47,11 @@ export const claimShareCode = (code: string) =>
 export const stopShare = (shareId: string) =>
   request<{ ok: boolean }>("POST", "/api/share/stop", { share_id: shareId });
 
-export const rtcNewSession = () =>
-  request<{ session_id: string }>("POST", "/api/rtc/session");
+export const rtcNewSession = (connId: number) =>
+  request<{ session_id: string }>("POST", "/api/rtc/session", { conn_id: connId });
+
+export const rtcCloseSession = (sessionId: string) =>
+  request<{ ok: boolean }>("DELETE", `/api/rtc/session/${sessionId}`);
 
 export const rtcPublish = (
   sessionId: string,
@@ -60,12 +63,15 @@ export const rtcPublish = (
     body,
   );
 
-export const rtcPull = (sessionId: string, shareId: string) =>
+export const rtcPull = (sessionId: string, shareId: string, kinds: ("video" | "audio")[]) =>
   request<{
     offer_sdp: string;
     tracks: { mid: string; track_name: string }[];
     requires_renegotiation: boolean;
-  }>("POST", `/api/rtc/session/${sessionId}/pull`, { share_id: shareId });
+  }>("POST", `/api/rtc/session/${sessionId}/pull`, { share_id: shareId, kinds });
+
+export const rtcUnpull = (sessionId: string, mids: string[], sdp: string) =>
+  request<{ answer_sdp: string }>("POST", `/api/rtc/session/${sessionId}/unpull`, { mids, sdp });
 
 export const rtcRenegotiate = (sessionId: string, sdp: string) =>
   request<{ ok: boolean }>("PUT", `/api/rtc/session/${sessionId}/renegotiate`, { sdp });

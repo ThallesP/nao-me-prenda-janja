@@ -41,6 +41,19 @@ export const CollapseIcon = ({ size = 24 }: IconProps) => (
   </svg>
 );
 
+export const EyeIcon = ({ size = 24 }: IconProps) => (
+  <svg {...svgProps(size)}>
+    <path d="M12 5c-4.9 0-8.6 3.6-10 6.5a1.2 1.2 0 0 0 0 1C3.4 15.4 7.1 19 12 19s8.6-3.6 10-6.5a1.2 1.2 0 0 0 0-1C20.6 8.6 16.9 5 12 5Zm0 10.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" />
+  </svg>
+);
+
+export const EyeOffIcon = ({ size = 24 }: IconProps) => (
+  <svg {...svgProps(size)}>
+    <path d="M3.7 2.3a1 1 0 0 0-1.4 1.4l18 18a1 1 0 0 0 1.4-1.4l-2.6-2.6c1.3-1.1 2.3-2.4 2.9-3.7a1.2 1.2 0 0 0 0-1C20.6 8.6 16.9 5 12 5c-1.5 0-2.9.3-4.1.9L3.7 2.3Zm5.8 5.8a3.5 3.5 0 0 1 4.9 4.9L9.5 8.1Z" />
+    <path d="M5.3 7.4C3.8 8.6 2.6 10.1 2 11.5a1.2 1.2 0 0 0 0 1C3.4 15.4 7.1 19 12 19c1.2 0 2.4-.2 3.4-.6l-2.1-2.1a3.5 3.5 0 0 1-4.6-4.6L5.3 7.4Z" />
+  </svg>
+);
+
 export const StopIcon = ({ size = 24 }: IconProps) => (
   <svg {...svgProps(size)}>
     <path d="M5 7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7Z" />

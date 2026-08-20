@@ -66,15 +66,20 @@ pub enum RtcBackend {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct BuiltinRtcConfig {
     /// Single UDP port carrying all WebRTC media (must be open to the internet).
+    #[serde(default = "default_udp_port")]
     pub udp_port: u16,
     /// Public IP advertised to browsers. Auto-detected at startup when unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub public_ip: Option<String>,
 }
 
+fn default_udp_port() -> u16 {
+    20101
+}
+
 impl Default for BuiltinRtcConfig {
     fn default() -> Self {
-        Self { udp_port: 20101, public_ip: None }
+        Self { udp_port: default_udp_port(), public_ip: None }
     }
 }
 
@@ -147,12 +152,10 @@ pub fn load_or_setup(path: &Path) -> Result<Config> {
         }
         RtcBackend::Builtin => {
             println!();
-            builtin.udp_port = ask_default(
+            builtin.udp_port = ask_port(
                 "UDP media port (must be reachable from the internet, UDP open in the firewall)",
                 "20101",
-            )?
-            .parse::<u16>()
-            .context("udp port must be a number")?;
+            )?;
             let ip = ask_default("Public IP (empty = auto-detect at startup)", "")?;
             builtin.public_ip = (!ip.is_empty()).then_some(ip);
         }
@@ -160,9 +163,7 @@ pub fn load_or_setup(path: &Path) -> Result<Config> {
 
     println!();
     let public_domain = ask("Public domain (reverse-proxied to this binary, e.g. activity.example.com)")?;
-    let port = ask_default("Port to listen on", "8787")?
-        .parse::<u16>()
-        .context("port must be a number")?;
+    let port = ask_port("Port to listen on", "8787")?;
 
     let mut key = [0u8; 32];
     rand::rng().fill_bytes(&mut key);
@@ -198,6 +199,16 @@ fn ask(prompt: &str) -> Result<String> {
             return Ok(value);
         }
         println!("Required — please enter a value.");
+    }
+}
+
+/// A typo shouldn't abort setup and throw away everything entered so far.
+fn ask_port(prompt: &str, default: &str) -> Result<u16> {
+    loop {
+        match ask_default(prompt, default)?.parse::<u16>() {
+            Ok(port) => return Ok(port),
+            Err(_) => println!("Not a valid port (1-65535) — try again."),
+        }
     }
 }
 
