@@ -1,0 +1,624 @@
+/*
+ * Tokens extracted from Discord's shipped web-client CSS (Aug 2026 build),
+ * "Dark" (theme-darker) variant + Go Live grid modules.
+ */
+:root {
+  --base-lowest: #121214;            /* voice container */
+  --surface-high: #242429;           /* tooltips, cards */
+  --surface-higher: #28282d;
+  --text-default: #f0f0f2;
+  --text-muted: #96969e;
+  --text-strong: #fafafa;
+  --interactive-idle: #ababb3;
+  --blurple: #5865f2;
+  --blurple-hover: #4752c4;
+  --blurple-active: #3c45a5;
+  --green: #23a55a;
+  --status-danger: #f23f43;
+  --critical: #d12e38;               /* filled red control */
+  --critical-hover: #a8242e;
+  --critical-active: #961c29;
+  --scrim: rgba(0, 0, 0, 0.72);
+  --tile-bg: rgba(43, 46, 54, 0.4);
+  --control-pill-bg: #131318;
+  --border-subtle: hsla(240, 4%, 61%, 0.12);
+  --hover-mod: hsla(0, 0%, 100%, 0.1);
+  --shadow-high: 0 12px 24px 0 rgba(0, 0, 0, 0.24);
+  --font: "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  color: var(--text-default);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+button {
+  font-family: var(--font);
+  border: none;
+  cursor: pointer;
+  background: none;
+  color: inherit;
+  padding: 0;
+}
+
+/* ---------- shared bits ---------- */
+
+.center-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.hint-text {
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.2857;
+}
+
+.error-title {
+  color: var(--text-strong);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid hsla(0, 0%, 100%, 0.12);
+  border-top-color: var(--blurple);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* LIVE badge: red pill, top-right of tile (Discord .liveIndicator) */
+.live-badge {
+  background: var(--status-danger);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  line-height: 18px;
+  padding: 0 6px;
+  border-radius: 16px;
+  flex-shrink: 0;
+}
+
+.btn-blurple,
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--blurple);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: 8px;
+  padding: 0 16px;
+  height: 38px;
+  transition: background-color 0.17s ease;
+}
+
+.btn-blurple:hover { background: var(--blurple-hover); }
+.btn-blurple:active { background: var(--blurple-active); }
+
+.btn-danger { background: var(--critical); }
+.btn-danger:hover { background: var(--critical-hover); }
+.btn-danger:active { background: var(--critical-active); }
+
+.btn-large {
+  width: 100%;
+  height: 44px;
+  font-size: 15px;
+}
+
+/* ---------- tooltips (Discord: surface-high, r8, 14/500, shadow-high) ---------- */
+
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  translate: -50% 0;
+  background: var(--surface-high);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-default);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  padding: 8px 12px;
+  border-radius: 8px;
+  box-shadow: var(--shadow-high);
+  pointer-events: none;
+  z-index: 1002;
+  animation: tooltip-pop 0.12s ease-out;
+}
+
+@keyframes tooltip-pop {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* ---------- activity (viewer) ---------- */
+
+.activity-root {
+  position: fixed;
+  inset: 0;
+  background: #000; /* call stage is pure black */
+  display: flex;
+  flex-direction: column;
+}
+
+.activity-root.center-stack {
+  align-items: center;
+  justify-content: center;
+}
+
+.stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.grid {
+  position: absolute;
+  inset: 0;
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: center;
+  justify-content: center;
+  gap: 8px; /* Discord --space-8 tile gap */
+}
+
+.stage-focus {
+  position: absolute;
+  inset: 0;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.focus-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.focus-main .tile {
+  width: 100%;
+  height: 100%;
+}
+
+/* Focused mode: others collapse into a bottom strip (Discord: 98px tall) */
+.focus-strip {
+  height: 98px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding-inline: 16px;
+  overflow-x: auto;
+}
+
+.focus-strip::-webkit-scrollbar {
+  height: 8px;
+}
+
+.focus-strip::-webkit-scrollbar-thumb {
+  background-color: #5e616b;
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 4px;
+}
+
+/* ---------- tiles ---------- */
+
+.tile {
+  position: relative;
+  background: var(--tile-bg);
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.tile video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  display: block;
+}
+
+.tile-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.tile-placeholder img {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+}
+
+.tile-compact .tile-placeholder img {
+  width: 40px;
+  height: 40px;
+}
+
+.tile-connecting {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.tile-compact .tile-connecting {
+  display: none;
+}
+
+.tile .live-badge {
+  position: absolute;
+  top: 12px;
+  inset-inline-end: 12px;
+  z-index: 10;
+}
+
+.tile-compact .live-badge {
+  top: 4px;
+  inset-inline-end: 4px;
+  font-size: 10px;
+  line-height: 14px;
+  padding: 0 4px;
+}
+
+/* Hover scrim + controls (Discord .controlBackground: scrim + blur(2px)) */
+.tile-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(transparent 55%, var(--scrim));
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+  display: flex;
+  align-items: flex-end;
+}
+
+.tile:hover .tile-overlay,
+.tile-placeholder ~ .tile-overlay {
+  opacity: 1;
+}
+
+/* bottom controls row: pill left, 32px circle actions right */
+.tile-controls-row {
+  width: 100%;
+  padding: 8px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tile-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--scrim);
+  backdrop-filter: blur(4px);
+  border-radius: 12px;
+  padding: 6px 8px;
+  max-width: 90%;
+  min-width: 0;
+}
+
+.tile-compact .tile-pill {
+  padding: 3px 6px;
+  border-radius: 8px;
+}
+
+.tile-name {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2857;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tile-compact .tile-name {
+  font-size: 12px;
+}
+
+.tile-muted-icon {
+  display: flex;
+  color: var(--status-danger);
+  flex-shrink: 0;
+}
+
+.tile-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.tile-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--scrim);
+  backdrop-filter: blur(4px);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background-color 0.1s ease;
+}
+
+.tile-btn:hover {
+  background: rgba(0, 0, 0, 0.88);
+}
+
+/* ---------- empty state ---------- */
+
+.empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  padding: 24px;
+}
+
+.empty-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--surface-high);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.empty-title {
+  color: var(--text-strong);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.empty-sub {
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.2857;
+  max-width: 360px;
+  margin-bottom: 12px;
+}
+
+/* ---------- control bar (Discord 2025 pill groups) ---------- */
+
+.control-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 16px;
+  opacity: 1;
+  transition: opacity 0.2s ease-in-out;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.control-bar-hidden {
+  opacity: 0;
+}
+
+.control-pill {
+  display: flex;
+  gap: 8px;
+  background: var(--control-pill-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 4px;
+  pointer-events: auto;
+}
+
+.control-bar-hidden .control-pill {
+  pointer-events: none;
+}
+
+.control-btn {
+  border-radius: 8px;
+  padding: 10px;
+  color: var(--interactive-idle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease-in-out, color 0.15s ease-in-out;
+}
+
+.control-btn:hover {
+  background: var(--hover-mod);
+  color: var(--text-strong);
+}
+
+.control-btn-active {
+  color: #fff;
+  background: var(--green);
+}
+
+.control-btn-active:hover {
+  background: var(--green);
+  color: #fff;
+}
+
+/* ---------- audio unlock toast ---------- */
+
+.audio-toast {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  translate: -50% 0;
+  background: var(--blurple);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 8px;
+  box-shadow: var(--shadow-high);
+  z-index: 6;
+}
+
+.audio-toast:hover {
+  background: var(--blurple-hover);
+}
+
+/* ---------- share page (external, on your domain) ---------- */
+
+.share-root {
+  min-height: 100vh;
+  background: var(--base-lowest);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.share-card {
+  width: 480px;
+  max-width: 100%;
+  background: var(--surface-high);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  box-shadow: var(--shadow-high);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.share-header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.share-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.share-title {
+  color: var(--text-strong);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.share-sub {
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.2857;
+  margin-top: 4px;
+}
+
+.share-footnote {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.333;
+  text-align: center;
+}
+
+.share-fields {
+  display: flex;
+  gap: 12px;
+}
+
+.share-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.share-field-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.share-select {
+  appearance: none;
+  width: 100%;
+  height: 40px;
+  padding: 0 32px 0 12px;
+  background: var(--base-lowest);
+  color: var(--text-default);
+  font-family: var(--font);
+  font-size: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='%2396969e'><path d='M7 10l5 5 5-5z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.share-select:hover {
+  border-color: hsla(240, 4%, 61%, 0.3);
+}
+
+.share-select:focus {
+  outline: none;
+  border-color: var(--blurple);
+}
+
+.share-live-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.share-preview {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 8px;
+  display: block;
+}
