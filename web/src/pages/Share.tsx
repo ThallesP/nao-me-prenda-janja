@@ -68,11 +68,14 @@ const buildConstraints = (res: ResolutionPreset, fps: number): MediaStreamConstr
       echoCancellation: false,
       noiseSuppression: false,
       autoGainControl: false,
-      suppressLocalAudioPlayback: true,
       channelCount: 2,
       sampleRate: 48000,
     },
     systemAudio: "include",
+    // Prefer the window's own sound over the system mix (which carries the
+    // Discord call); Chrome falls back to the mix where the OS can't isolate
+    // one app.
+    windowAudio: "window",
     surfaceSwitching: "include",
     selfBrowserSurface: "exclude",
     monitorTypeSurfaces: "include",
@@ -353,7 +356,8 @@ export const Share = () => {
             </button>
             <div className="share-footnote">
               Higher settings need more upload bandwidth. Check “Share audio” in the picker to
-              stream sound too.
+              stream sound too. Share a tab to send only its sound: a screen's audio, and sometimes
+              a window's, also carries your Discord call.
             </div>
           </>
         )}
