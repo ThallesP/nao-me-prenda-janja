@@ -314,7 +314,7 @@ export const Activity = () => {
       audio={streams.get(share.id)?.audio}
       muted={mutedIds.has(share.id)}
       watching={!unwatchedIds.has(share.id)}
-      isOwn={share.user_id === self?.id}
+      isOwn={self !== null && share.user_id === self.id}
       audioRetry={audioRetry}
       compact={compact}
       style={style}
