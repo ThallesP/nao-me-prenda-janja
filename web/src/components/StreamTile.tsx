@@ -11,6 +11,8 @@ type Props = {
   muted: boolean;
   /** False when the user opted out of this stream — nothing is received. */
   watching: boolean;
+  /** Your own share: its audio is never played back to you, so it has no mute. */
+  isOwn: boolean;
   /** Bumped after a user gesture to retry audio playback blocked by autoplay. */
   audioRetry: number;
   compact?: boolean;
@@ -27,6 +29,7 @@ export const StreamTile = ({
   audio,
   muted,
   watching,
+  isOwn,
   audioRetry,
   compact,
   style,
@@ -37,6 +40,7 @@ export const StreamTile = ({
 }: Props) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const hasAudio = share.has_audio && !isOwn;
 
   useEffect(() => {
     const el = videoRef.current;
@@ -90,7 +94,7 @@ export const StreamTile = ({
           )}
         </div>
       )}
-      {share.has_audio && audio && <audio ref={audioRef} autoPlay />}
+      {hasAudio && audio && <audio ref={audioRef} autoPlay />}
 
       <span className="live-badge">Live</span>
 
@@ -98,7 +102,7 @@ export const StreamTile = ({
         <div className="tile-controls-row" onClick={(e) => e.stopPropagation()}>
           <div className="tile-pill" onClick={onClick}>
             <span className="tile-name">{share.username}</span>
-            {muted && share.has_audio && (
+            {muted && hasAudio && (
               <span className="tile-muted-icon">
                 <SoundMutedIcon size={14} />
               </span>
@@ -106,7 +110,7 @@ export const StreamTile = ({
           </div>
           {!compact && (
             <div className="tile-actions">
-              {watching && share.has_audio && (
+              {watching && hasAudio && (
                 <button
                   type="button"
                   className="tile-btn"

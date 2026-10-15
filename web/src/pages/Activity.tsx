@@ -45,6 +45,11 @@ export const Activity = () => {
   >(new Map());
   const unwatchedRef = useRef<Set<string>>(new Set());
   const mutedRef = useRef<Set<string>>(new Set());
+  /**
+   * Your own share's audio is never pulled: a screen shared with system audio
+   * would capture the activity playing it back and send it out again, looping.
+   */
+  const selfIdRef = useRef<string | null>(null);
   const hiddenRef = useRef(document.hidden);
   const idleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -71,7 +76,8 @@ export const Activity = () => {
       if (unwatchedRef.current.has(share.id)) continue;
       // Hidden activity drops video but keeps listening, Discord-style.
       if (!hiddenRef.current) video.push(share.id);
-      if (share.has_audio && !mutedRef.current.has(share.id)) audio.push(share.id);
+      const isOwn = share.user_id === selfIdRef.current;
+      if (share.has_audio && !isOwn && !mutedRef.current.has(share.id)) audio.push(share.id);
     }
     connRef.current?.send({ type: "watching", video, audio });
   }, []);
@@ -111,9 +117,10 @@ export const Activity = () => {
       };
       applied.set(share.id, state);
       const unwatched = unwatchedRef.current.has(share.id);
+      const isOwn = share.user_id === selfIdRef.current;
       const want = {
         video: !unwatched && !hiddenRef.current,
-        audio: share.has_audio && !unwatched && !mutedRef.current.has(share.id),
+        audio: share.has_audio && !isOwn && !unwatched && !mutedRef.current.has(share.id),
       };
       const add = (["video", "audio"] as const).filter((k) => want[k] && !state[k]);
       const remove = (["video", "audio"] as const).filter((k) => !want[k] && state[k]);
@@ -195,6 +202,7 @@ export const Activity = () => {
       .then(({ sdk, user }) => {
         if (cancelled) return;
         sdkRef.current = sdk;
+        selfIdRef.current = user.id;
         setSelf(user);
         const token = getSessionToken();
         if (!token) throw new Error("missing session token");
@@ -306,6 +314,7 @@ export const Activity = () => {
       audio={streams.get(share.id)?.audio}
       muted={mutedIds.has(share.id)}
       watching={!unwatchedIds.has(share.id)}
+      isOwn={share.user_id === self?.id}
       audioRetry={audioRetry}
       compact={compact}
       style={style}
