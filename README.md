@@ -92,3 +92,7 @@ Open the activity in a voice channel → **Share Your Screen** → browser tab o
 - **Authorization**: every session (viewer and sharer) is validated server-side against Discord's activity-instance participant list — being outside the voice channel means no token, and websocket joins re-check. Share links are single-use codes that expire in 5 minutes. Backend and Discord secrets never reach the browser; track names are assigned server-side.
 - **Static screens** (`cloudflare`): Cloudflare garbage-collects tracks after ~30s without packets; browsers send keepalive probes during screenshare so this is normally a non-issue, but a fully frozen source for a long time may need a re-share.
 - **Builtin backend**: media is forwarded as-is (no simulcast, no server-side bandwidth adaptation) — viewers on connections slower than the publisher's bitrate will stutter; pick a lower resolution preset when sharing. No TURN/TCP fallback: viewers on UDP-blocking networks can't connect.
+
+## Community
+
+Questions, ideas or just want to talk? Come say hi on [Discord](https://discord.gg/pF5wfWZMSH).
